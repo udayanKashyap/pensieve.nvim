@@ -1,0 +1,37 @@
+# Lua bytecode
+*.luac
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.bak
+*.tmp
+*~
+
+# Neovim plugin managers
+/lazy-lock.json
+/lazy-lock.*
+/packer_compiled.lua
+
+# Build / test / cache
+*.log
+.cache/
+dist/
+build/
+tmp/
+*.out
+
+# Node or Python stuff (if you ever use them in tests or docs)
+node_modules/
+venv/
+.env
+__pycache__/
+*.pyc
+
+# Docs (generated)
+doc/tags
+
+# Personal / local configs
+local.lua
