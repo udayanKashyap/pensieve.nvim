@@ -8,6 +8,7 @@ local pane = {
 	win = nil,
 	prev_win = nil,
 	line_map = {},
+	kind = "all", -- all | project
 }
 
 -- namespace for highlights
@@ -42,8 +43,22 @@ local function rebuild_pane()
 	local display = {}
 	pane.line_map = {}
 
-	local p = 1
+	-- Build ordered indices: first incomplete (in fetch order), then completed (in fetch order)
+	local ordered_indices = {}
 	for i, t in ipairs(tasks) do
+		if not t.done then
+			table.insert(ordered_indices, i)
+		end
+	end
+	for i, t in ipairs(tasks) do
+		if t.done then
+			table.insert(ordered_indices, i)
+		end
+	end
+
+	-- Build display lines following the ordered indices and maintain line_map -> original index
+	for line_no, idx in ipairs(ordered_indices) do
+		local t = tasks[idx]
 		local icon = t.done and icon_checked or icon_unchecked
 		local filename = (t.file and t.file:match("([^/]+)$")) or t.file or "[NoFile]"
 		local line = ""
@@ -53,8 +68,7 @@ local function rebuild_pane()
 			line = string.format("- %s  %s  %s", icon, t.desc, filename)
 		end
 		table.insert(display, line)
-		pane.line_map[p] = i
-		p = p + 1
+		pane.line_map[line_no] = idx
 	end
 
 	if #display == 0 then
@@ -67,8 +81,12 @@ local function rebuild_pane()
 
 	vim.api.nvim_buf_clear_namespace(pane.buf, ns, 0, -1)
 
-	for idx, t in ipairs(tasks) do
-		local line = idx - 1
+	-- Apply highlights aligned with the visual order using line_map
+	for line_no = 1, #display do
+		local idx = pane.line_map[line_no]
+		local t = tasks[idx]
+		local line = line_no - 1
+
 		local icon_hl = t.done and "PensieveDoneIcon" or ""
 		local icon_start = 2
 		local icon_end = icon_start + #icon_unchecked
@@ -80,7 +98,7 @@ local function rebuild_pane()
 
 		if t.project and t.project ~= "" then
 			local project_marker = " "
-			local project_pos = string.find(display[idx], project_marker, 1, true)
+			local project_pos = string.find(display[line_no], project_marker, 1, true)
 			if project_pos then
 				local project_start = project_pos - 1
 				local project_end = project_pos + #t.project + 4
@@ -90,20 +108,20 @@ local function rebuild_pane()
 					priority = 1,
 				})
 
-				local file_pos = string.find(display[idx], "-", project_end, true)
+				local file_pos = string.find(display[line_no], "-", project_end, true)
 				if file_pos then
 					vim.api.nvim_buf_set_extmark(pane.buf, ns, line, file_pos - 1, {
-						end_col = #display[idx],
+						end_col = #display[line_no],
 						hl_group = "PensieveFile",
 						priority = 1,
 					})
 				end
 			end
 		else
-			local file_pos = string.find(display[idx], t.desc, 1, true)
+			local file_pos = string.find(display[line_no], t.desc, 1, true)
 			if file_pos then
 				vim.api.nvim_buf_set_extmark(pane.buf, ns, line, file_pos + #t.desc + 2, {
-					end_col = #display[idx],
+					end_col = #display[line_no],
 					hl_group = "PensieveFile",
 					priority = 1,
 				})
@@ -112,7 +130,7 @@ local function rebuild_pane()
 
 		if t.done then
 			vim.api.nvim_buf_set_extmark(pane.buf, ns, line, 8, {
-				end_col = #display[idx],
+				end_col = #display[line_no],
 				hl_group = "PensieveDoneDesc",
 				priority = 5,
 			})
@@ -120,8 +138,15 @@ local function rebuild_pane()
 	end
 end
 
+-- forward declaration for project-only rebuild
+local rebuild_project_pane
+
 function M.refresh()
-	rebuild_pane()
+	if pane.kind == "project" then
+		rebuild_project_pane()
+	else
+		rebuild_pane()
+	end
 end
 
 -----------------------------------------------------------------------
@@ -130,6 +155,9 @@ end
 function M.open()
 	if pane.win and vim.api.nvim_win_is_valid(pane.win) then
 		vim.api.nvim_set_current_win(pane.win)
+		-- switch to all-tasks view if needed
+		pane.kind = "all"
+		rebuild_pane()
 		return
 	end
 
@@ -160,7 +188,191 @@ function M.open()
 	bmap("n", "x", M.toggle_task, "Toggle task")
 	bmap("n", "dd", M.delete_task, "Delete task")
 
+	pane.kind = "all"
 	rebuild_pane()
+
+	vim.api.nvim_create_autocmd({ "BufWipeout", "BufUnload" }, {
+		buffer = pane.buf,
+		callback = function()
+			pane.buf, pane.win, pane.line_map = nil, nil, {}
+			pcall(vim.api.nvim_buf_clear_namespace, pane.buf, ns, 0, -1)
+		end,
+	})
+end
+
+-----------------------------------------------------------------------
+-- Project-only Pane
+-----------------------------------------------------------------------
+-- Separate rebuild function for project-only view
+function rebuild_project_pane()
+	if not ensure_buf_valid() then
+		return
+	end
+
+	vim.api.nvim_set_hl(0, "PensieveDoneIcon", { fg = "#b8db87", bold = true })
+	vim.api.nvim_set_hl(
+		0,
+		"PensieveDoneDesc",
+		{ fg = vim.api.nvim_get_hl(0, { name = "Comment" }).fg, strikethrough = true }
+	)
+	vim.api.nvim_set_hl(0, "PensieveDesc", { link = "Normal" })
+	vim.api.nvim_set_hl(0, "PensieveProject", { link = "Directory" })
+	vim.api.nvim_set_hl(0, "PensieveFile", { link = "Comment" })
+
+	local icon_unchecked = "󰄱 "
+	local icon_checked = "󰄲 "
+
+	local tasks_all = U.read_tasks()
+	local display = {}
+	pane.line_map = {}
+
+	local project_name, project_root = U.detect_project()
+
+	-- filter to current project
+	local filtered_indices = {}
+	for i, t in ipairs(tasks_all) do
+		local belongs = false
+		if t.project_root and project_root then
+			belongs = t.project_root == project_root
+		elseif t.project and project_name then
+			belongs = t.project == project_name
+		end
+		if belongs then
+			table.insert(filtered_indices, i)
+		end
+	end
+
+	-- Order: first incomplete, then completed (both in fetch order)
+	local ordered_indices = {}
+	for _, i in ipairs(filtered_indices) do
+		if not tasks_all[i].done then
+			table.insert(ordered_indices, i)
+		end
+	end
+	for _, i in ipairs(filtered_indices) do
+		if tasks_all[i].done then
+			table.insert(ordered_indices, i)
+		end
+	end
+
+	for line_no, idx in ipairs(ordered_indices) do
+		local t = tasks_all[idx]
+		local icon = t.done and icon_checked or icon_unchecked
+		local filename = (t.file and t.file:match("([^/]+)$")) or t.file or "[NoFile]"
+		local line = ""
+		if t.project and t.project ~= "" then
+			line = string.format("- %s  %s      %s -%s", icon, t.desc, t.project, filename)
+		else
+			line = string.format("- %s  %s  %s", icon, t.desc, filename)
+		end
+		table.insert(display, line)
+		pane.line_map[line_no] = idx -- map to original index in tasks_all
+	end
+
+	if #display == 0 then
+		display = { "-- No tasks for this project -- (a to add)" }
+	end
+
+	vim.bo[pane.buf].modifiable = true
+	vim.api.nvim_buf_set_lines(pane.buf, 0, -1, false, display)
+	vim.bo[pane.buf].modifiable = false
+
+	vim.api.nvim_buf_clear_namespace(pane.buf, ns, 0, -1)
+
+	-- Highlights identical to all-tasks view
+	for line_no = 1, #display do
+		local idx = pane.line_map[line_no]
+		local t = tasks_all[idx]
+		local line = line_no - 1
+
+		local icon_hl = t.done and "PensieveDoneIcon" or ""
+		local icon_start = 2
+		local icon_end = icon_start + #icon_unchecked
+
+		vim.api.nvim_buf_set_extmark(pane.buf, ns, line, icon_start, {
+			end_col = icon_end,
+			hl_group = icon_hl,
+		})
+
+		if t.project and t.project ~= "" then
+			local project_marker = " "
+			local project_pos = string.find(display[line_no], project_marker, 1, true)
+			if project_pos then
+				local project_start = project_pos - 1
+				local project_end = project_pos + #t.project + 4
+				vim.api.nvim_buf_set_extmark(pane.buf, ns, line, project_start, {
+					end_col = project_end,
+					hl_group = "PensieveProject",
+					priority = 1,
+				})
+
+				local file_pos = string.find(display[line_no], "-", project_end, true)
+				if file_pos then
+					vim.api.nvim_buf_set_extmark(pane.buf, ns, line, file_pos - 1, {
+						end_col = #display[line_no],
+						hl_group = "PensieveFile",
+						priority = 1,
+					})
+				end
+			end
+		else
+			local file_pos = string.find(display[line_no], t.desc, 1, true)
+			if file_pos then
+				vim.api.nvim_buf_set_extmark(pane.buf, ns, line, file_pos + #t.desc + 2, {
+					end_col = #display[line_no],
+					hl_group = "PensieveFile",
+					priority = 1,
+				})
+			end
+		end
+
+		if t.done then
+			vim.api.nvim_buf_set_extmark(pane.buf, ns, line, 8, {
+				end_col = #display[line_no],
+				hl_group = "PensieveDoneDesc",
+				priority = 5,
+			})
+		end
+	end
+end
+
+function M.open_project()
+	if pane.win and vim.api.nvim_win_is_valid(pane.win) then
+		vim.api.nvim_set_current_win(pane.win)
+		pane.kind = "project"
+		rebuild_project_pane()
+		return
+	end
+
+	pane.prev_win = vim.api.nvim_get_current_win()
+	pane.buf = vim.api.nvim_create_buf(false, true)
+	vim.api.nvim_buf_set_name(pane.buf, "PensievePane")
+
+	vim.bo[pane.buf].buftype = "nofile"
+	vim.bo[pane.buf].bufhidden = "wipe"
+	vim.bo[pane.buf].swapfile = false
+	vim.bo[pane.buf].modifiable = false
+	vim.bo[pane.buf].filetype = "pensieve"
+
+	vim.cmd("botright " .. C.options.pane_height .. "split")
+	pane.win = vim.api.nvim_get_current_win()
+	vim.api.nvim_win_set_buf(pane.win, pane.buf)
+	vim.wo[pane.win].number = false
+	vim.wo[pane.win].relativenumber = false
+
+	local function bmap(mode, lhs, rhs, desc)
+		vim.keymap.set(mode, lhs, rhs, { buffer = pane.buf, silent = true, desc = desc })
+	end
+
+	bmap("n", "q", M.close, "Close pane")
+	bmap("n", "r", M.refresh, "Refresh tasks")
+	bmap("n", "a", M.add_task, "Add task")
+	bmap("n", "<CR>", M.goto_source, "Goto source")
+	bmap("n", "x", M.toggle_task, "Toggle task")
+	bmap("n", "dd", M.delete_task, "Delete task")
+
+	pane.kind = "project"
+	rebuild_project_pane()
 
 	vim.api.nvim_create_autocmd({ "BufWipeout", "BufUnload" }, {
 		buffer = pane.buf,

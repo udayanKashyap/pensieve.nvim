@@ -10,6 +10,7 @@ function M.setup(opts)
 end
 
 M.openTaskPane = pane.open
+M.openProjectTaskPane = pane.open_project
 M.toggleTaskPane = pane.toggle
 M.addTask = pane.add_task
 M.recent_tasks = pane.recent_tasks

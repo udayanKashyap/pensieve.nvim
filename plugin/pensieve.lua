@@ -21,6 +21,13 @@ if ok then
 			desc = "Open Task Pane",
 		},
 		{
+			"<leader>tP",
+			function()
+				require("pensieve").openProjectTaskPane()
+			end,
+			desc = "Open Project Task Pane",
+		},
+		{
 			"<leader>ta",
 			function()
 				require("pensieve").addTask()
@@ -32,6 +39,9 @@ else
 	vim.keymap.set("n", "<leader>tp", function()
 		require("pensieve").openTaskPane()
 	end, { desc = "Open Task Pane" })
+	vim.keymap.set("n", "<leader>tP", function()
+		require("pensieve").openProjectTaskPane()
+	end, { desc = "Open Project Task Pane" })
 	vim.keymap.set("n", "<leader>ta", function()
 		require("pensieve").addTask()
 	end, { desc = "Add Task" })
