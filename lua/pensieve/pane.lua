@@ -183,7 +183,7 @@ function M.open()
 
 	bmap("n", "q", M.close, "Close pane")
 	bmap("n", "r", M.refresh, "Refresh tasks")
-	bmap("n", "a", M.add_task, "Add task")
+	-- bmap("n", "a", M.add_task, "Add task")
 	bmap("n", "<CR>", M.goto_source, "Goto source")
 	bmap("n", "x", M.toggle_task, "Toggle task")
 	bmap("n", "dd", M.delete_task, "Delete task")
@@ -366,7 +366,7 @@ function M.open_project()
 
 	bmap("n", "q", M.close, "Close pane")
 	bmap("n", "r", M.refresh, "Refresh tasks")
-	bmap("n", "a", M.add_task, "Add task")
+	-- bmap("n", "a", M.add_task, "Add task")
 	bmap("n", "<CR>", M.goto_source, "Goto source")
 	bmap("n", "x", M.toggle_task, "Toggle task")
 	bmap("n", "dd", M.delete_task, "Delete task")
@@ -489,6 +489,13 @@ function M.goto_source()
 	end
 
 	if t.file and t.file ~= "[NoFile]" then
+		-- Before opening, verify the file actually exists
+		local abs_path = vim.fn.fnamemodify(t.file, ":p")
+		if vim.fn.filereadable(abs_path) ~= 1 then
+			vim.notify("Source file not found (deleted or renamed): \n" .. t.file, vim.log.levels.ERROR)
+			return
+		end
+
 		-- Prefer opening the file in the window that opened the pane (pane.prev_win)
 		local target_win = nil
 		if pane.prev_win and vim.api.nvim_win_is_valid(pane.prev_win) then
