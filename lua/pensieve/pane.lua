@@ -452,7 +452,11 @@ function M.toggle_task()
 	end
 	t.done = not t.done
 	U.write_tasks(tasks)
-	rebuild_pane()
+	if pane.kind == "project" then
+		rebuild_project_pane()
+	else
+		rebuild_pane()
+	end
 end
 
 function M.delete_task()
@@ -461,7 +465,11 @@ function M.delete_task()
 	local tasks = U.read_tasks()
 	table.remove(tasks, idx)
 	U.write_tasks(tasks)
-	rebuild_pane()
+	if pane.kind == "project" then
+		rebuild_project_pane()
+	else
+		rebuild_pane()
+	end
 	vim.notify("Task deleted", vim.log.levels.INFO)
 end
 
@@ -481,8 +489,22 @@ function M.goto_source()
 	end
 
 	if t.file and t.file ~= "[NoFile]" then
-		pcall(vim.cmd, "edit " .. vim.fn.fnameescape(t.file))
-		pcall(vim.api.nvim_win_set_cursor, 0, { tonumber(t.line), 0 })
+		-- Prefer opening the file in the window that opened the pane (pane.prev_win)
+		local target_win = nil
+		if pane.prev_win and vim.api.nvim_win_is_valid(pane.prev_win) then
+			target_win = pane.prev_win
+		end
+
+		if target_win then
+			-- Set the target window and open the file there, then set cursor in that window
+			pcall(vim.api.nvim_set_current_win, target_win)
+			pcall(vim.cmd, "edit " .. vim.fn.fnameescape(t.file))
+			pcall(vim.api.nvim_win_set_cursor, target_win, { tonumber(t.line), 0 })
+		else
+			-- Fallback: open in current window
+			pcall(vim.cmd, "edit " .. vim.fn.fnameescape(t.file))
+			pcall(vim.api.nvim_win_set_cursor, 0, { tonumber(t.line), 0 })
+		end
 	else
 		vim.notify("No source location found", vim.log.levels.WARN)
 	end
