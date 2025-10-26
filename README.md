@@ -11,6 +11,7 @@
 - Toggle, delete, or jump directly to task sources.
 - JSON-based storage (persistent across sessions).
 - Optional [which-key](https://github.com/folke/which-key.nvim) labels.
+- Optional [trouble.nvim](https://github.com/folke/trouble.nvim) quickfix mode integration
 - Optional integration with [Snacks Dashboard](https://github.com/folke/snacks.nvim).
 
 ---
@@ -44,11 +45,12 @@
 
 ### Keymaps (auto-created)
 
-| Action               | Default Key  |
-| -------------------- | ------------ |
-| Open all tasks       | `<leader>tp` |
-| Open project tasks   | `<leader>tP` |
-| Add task from cursor | `<leader>ta` |
+| Action                                   | Default Key  |
+| ---------------------------------------- | ------------ |
+| Open all tasks                           | `<leader>tp` |
+| Open project tasks                       | `<leader>tP` |
+| Add task from cursor                     | `<leader>ta` |
+| Open project tasks in Trouble's quickfix | `<leader>tq` |
 
 Inside the task pane:
 
@@ -62,12 +64,22 @@ Inside the task pane:
 
 - `:PensieveOpen` - Open task pane
 - `:PensieveAdd` - Add a new task
+- `:PensieveTrouble` - Add tasks to Trouble's quickfix mode
 
 Optional toggle mapping:
 
 ```lua
 vim.keymap.set("n", "<leader>tt", require("pensieve").toggleTaskPane, { desc = "Toggle Task Pane" })
 ```
+
+### Trouble.nvim Integration (optional)
+
+If you use [trouble.nvim](https://github.com/folke/trouble.nvim), Pensieve can show your tasks in Trouble's quickfix view.
+
+- Command: `:PensieveTrouble` — opens the current project's tasks in Trouble
+- Keymap: `<leader>tq` — normal-mode mapping for the same
+
+No extra setup needed; the command and mapping are defined automatically. If Trouble isn't installed, a friendly warning is shown.
 
 ---
 
